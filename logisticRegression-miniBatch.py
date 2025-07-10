@@ -35,10 +35,6 @@ palabras_negativas = {"triste", "deprimido", "mal", "horrible", "terrible", "enf
 # Funciones
 
 # %%
-def limpiar(texto):
-
-    return texto.lower().split()
-
 def extraer_caracteristicas(tweet, palabras_negativas, palabras_positivas):
     tokens = limpiar(tweet)
     x0 = 1  # Bias
@@ -60,27 +56,37 @@ def single_log_loss(p, y):
     p = max(min(p, 1 - 1e-15), 1e-15)
     return - y * math.log(p) - (1 - y) * math.log(1 - p)
 
+def compute_batch_gradient(w, X_batch, y_batch):
+    grad = [0.0 for _ in w]
+    batch_size = len(y_batch)
+    for xi, yi in zip(X_batch, y_batch):
+        p = predict_proba(w, xi)
+        for j in range(len(w)):
+            grad[j] += (p - yi) * xi[j]
+    return [g / batch_size for g in grad]
 
-def compute_gradient_example(w, xi, yi):
-    p = predict_proba(w, xi)
-    grad = [(p - yi) * xj for xj in xi]
-    return grad
-
-def train_logistic_regression_sgd(X, y, lr=0.01, epochs=1000):
-    w = [0.0 for _ in range(len(X[0]))]  # Inicializar pesos en cero (como en el libro)
+def train_logistic_regression_minibatch(X, y, lr=0.01, epochs=1000, batch_size=10):
+    w = [0.0 for _ in range(len(X[0]))]  # Inicializar pesos
 
     for epoch in range(epochs):
         combined = list(zip(X, y))
         random.shuffle(combined)
 
-        for xi, yi in combined:
-            p = predict_proba(w, xi)
-            loss_i = single_log_loss(p, yi)
-            grad = compute_gradient_example(w, xi, yi)
+        # Dividir en mini-batches
+        for i in range(0, len(y), batch_size):
+            batch = combined[i:i + batch_size]
+            X_batch, y_batch = zip(*batch)
+
+            # Calcular gradiente promedio en el batch
+            grad = compute_batch_gradient(w, X_batch, y_batch)
+
+            # Actualizar pesos
             w = [wj - lr * gj for wj, gj in zip(w, grad)]
 
+        # (Opcional) Calcular pérdida promedio en la época
+        loss_epoch = sum(single_log_loss(predict_proba(w, xi), yi) for xi, yi in zip(X, y)) / len(y)
         if epoch % 100 == 0 or epoch == epochs - 1:
-            print(f"Época {epoch}: pérdida último ejemplo = {loss_i:.4f}")
+            print(f"Época {epoch}: pérdida promedio = {loss_epoch:.4f}")
 
     return w
 
@@ -100,9 +106,9 @@ y_train = df_train['Clase'].tolist()
 
 
 # %%
-w = train_logistic_regression_sgd(X_train, y_train, lr=0.01, epochs=1000)
+w = train_logistic_regression_minibatch(X_train, y_train, lr=0.01, epochs=1000, batch_size=5)
 
-# Predicción final
+# Predicción final sobre un ejemplo de prueba
 proba = predict_proba(w, x_test)
 clase_predicha = predict(w, x_test)
 
